@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Waste-to-Energy Microgrid</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <div class="logo">⚡</div>
+    <div>
+      <h1>Decentralized Waste-to-Energy Microgrid <span>with Biochar</span></h1>
+      <p>Live digital twin · hopper → gasifier → gas cleaning → engine → microgrid</p>
+    </div>
+  </div>
+  <div class="clock">
+    <button id="btnPlay" class="btn">⏸ Pause</button>
+    <label>Speed
+      <select id="speed">
+        <option value="1">1× real time</option>
+        <option value="10">10×</option>
+        <option value="60" selected>60× (1 s = 1 min)</option>
+        <option value="300">300×</option>
+        <option value="900">900× (1 s = 15 min)</option>
+      </select>
+    </label>
+    <div class="simtime"><small>Plant time</small><b id="simTime">00:00:00</b></div>
+    <button id="btnNight" class="btn">🌙 Night</button>
+    <button id="btnDemo" class="btn">▶ Guided Demo</button>
+    <button id="btnReset" class="btn ghost">↺ Reset</button>
+  </div>
+</header>
+
+<section class="kpis" id="kpis"></section>
+
+<main class="layout">
+  <aside class="controls">
+    <div class="card">
+      <h2>① Dump waste</h2>
+      <label>Waste type
+        <select id="feedType"></select>
+      </label>
+      <label>Weight (kg)
+        <div class="row"><input id="feedKg" type="number" min="1" max="2000" value="50"><button id="btnDump" class="btn primary">Dump ⤓</button></div>
+      </label>
+      <div class="chips" id="quickKg"></div>
+      <div class="forecast" id="forecast"></div>
+    </div>
+
+    <div class="card">
+      <h2>② Operate the plant</h2>
+      <label>Equivalence ratio (air) <b id="erVal"></b>
+        <input id="er" type="range" min="0.18" max="0.45" step="0.01">
+      </label>
+      <label>Dryer moisture set-point <b id="mtVal"></b>
+        <input id="mt" type="range" min="0.06" max="0.30" step="0.01">
+      </label>
+      <label class="inline"><input id="autoFeed" type="checkbox" checked> Auto load-following feed</label>
+      <label id="manualWrap">Manual feed rate <b id="frVal"></b>
+        <input id="fr" type="range" min="5" max="45" step="1">
+      </label>
+      <div class="row">
+        <button id="btnIgnite" class="btn">🔥 Ignite</button>
+        <button id="btnStop" class="btn ghost">Stop gasifier</button>
+      </div>
+      <label class="inline"><input id="engEnable" type="checkbox" checked> Engine enabled</label>
+    </div>
+
+    <div class="card">
+      <h2>③ Village load</h2>
+      <label>LED streetlights (60 W) <b id="slVal"></b><input id="sl" type="range" min="0" max="40" step="1"></label>
+      <label>Homes (300 W) <b id="hoVal"></b><input id="ho" type="range" min="0" max="30" step="1"></label>
+    </div>
+
+    <div class="card">
+      <h2>④ Real scale + LEDs <small>(optional)</small></h2>
+      <p class="muted">Arduino + HX711 load cell: put waste on the scale and it is dumped into the twin; 8 real LEDs mirror the village.</p>
+      <div class="row"><button id="btnSerial" class="btn">🔌 Connect Arduino</button></div>
+      <label>kg of waste per gram on scale <input id="kgPerGram" type="number" step="0.1" value="0.5"></label>
+      <div class="muted" id="hwStatus">Not connected</div>
+    </div>
+  </aside>
+
+  <section class="center">
+    <div class="card plant">
+      <div class="plant-head">
+        <h2>Process flow <small>click any unit to look inside</small></h2>
+        <div class="legend">
+          <span><i class="lg bio"></i>biomass</span><span><i class="lg gas"></i>producer gas</span><span><i class="lg air"></i>air</span>
+          <span><i class="lg heat"></i>waste heat</span><span><i class="lg elec"></i>electricity</span>
+        </div>
+      </div>
+      <svg id="schematic" viewBox="0 0 1600 640" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+
+    <div class="grid2">
+      <div class="card village-card">
+        <div class="plant-head">
+          <h2>Village microgrid <small id="villageSub"></small></h2>
+          <div class="ledstrip" id="ledstrip" title="Mirrors the 8 physical LEDs"></div>
+        </div>
+        <svg id="village" viewBox="0 0 900 240" preserveAspectRatio="xMidYMid meet"></svg>
+      </div>
+      <div class="card">
+        <h2>Trends <small>last 6 h of plant time</small></h2>
+        <canvas id="chartPower" height="120"></canvas>
+        <canvas id="chartGas" height="120"></canvas>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card"><h2>Alarms</h2><ul id="alerts" class="alerts"></ul></div>
+      <div class="card"><h2>Event log</h2><ul id="log" class="log"></ul></div>
+    </div>
+
+    <div class="card econ-card">
+      <div class="plant-head">
+        <h2>Economics <small>revenue streams, operating cost & net profit</small></h2>
+        <div id="econProfitTag" class="tag-pill pos">Profit: ₹0.00</div>
+      </div>
+      <div class="econ-grid" id="econGrid"></div>
+    </div>
+
+    <div class="card tm-card" id="tuningMonitorSection">
+      <div class="plant-head">
+        <div>
+          <h2>Tuning & Monitor <small>parameter control, live telemetry & export</small></h2>
+        </div>
+        <div class="tm-actions">
+          <div class="tm-tabs">
+            <button type="button" class="btn small tm-tab-btn active" data-tab="tuning">⚙️ Plant Tuning</button>
+            <button type="button" class="btn small tm-tab-btn" data-tab="monitor">📊 Telemetry Monitor</button>
+          </div>
+          <button type="button" id="btnRestoreDefaults" class="btn small ghost">↺ Restore defaults</button>
+          <button type="button" id="btnDownloadCsv" class="btn small primary">📥 Download CSV</button>
+        </div>
+      </div>
+
+      <div id="tabTuning" class="tm-tab-pane active">
+        <p class="muted">Tune plant design and operation parameters live. Values immediately update the engine and sync with all dashboard sliders.</p>
+        <div class="tuning-grid" id="tuningGrid"></div>
+      </div>
+
+      <div id="tabMonitor" class="tm-tab-pane">
+        <p class="muted">Live digital twin telemetry from <code>sim.s</code> updating 4 times per second, grouped by subsystem.</p>
+        <div class="monitor-table-wrap">
+          <table class="monitor-table">
+            <thead>
+              <tr>
+                <th style="width: 25%;">Subsystem</th>
+                <th style="width: 45%;">Parameter</th>
+                <th style="width: 20%; text-align: right;">Live Value</th>
+                <th style="width: 10%;">Unit</th>
+              </tr>
+            </thead>
+            <tbody id="monitorBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="demoCaption" class="demo-caption" style="display:none;" aria-live="polite"></div>
+
+<div id="inspector" class="inspector" aria-hidden="true">
+  <div class="insp-head">
+    <h2 id="inspTitle">Unit</h2>
+    <button id="inspClose" class="btn ghost">✕</button>
+  </div>
+  <canvas id="inspCanvas"></canvas>
+  <p id="inspInside" class="inside"></p>
+  <div id="inspActions" class="row wrap"></div>
+  <h3>Live readings</h3>
+  <dl id="inspReadings" class="readings"></dl>
+  <h3>Math behind it</h3>
+  <table id="inspEq" class="eqtable"></table>
+  <div id="inspReactWrap"><h3>Reactions by zone</h3><dl id="inspReact" class="reactions"></dl></div>
+</div>
+
+<!-- PERSON A: process engine (no DOM) -->
+<script src="js/engine/feedstocks.js"></script>
+<script src="js/engine/engine.js"></script>
+<script src="js/engine/equations.js"></script>
+<script src="js/engine/hardware.js"></script>
+<!-- PERSON B: visuals -->
+<script src="js/ui/schematic.js"></script>
+<script src="js/ui/inspector.js"></script>
+<script src="js/ui/village.js"></script>
+<script src="js/ui/charts.js"></script>
+<script src="js/ui/controls.js"></script>
+<!-- SHARED glue -->
+<script src="js/main.js"></script>
+</body>
+</html>
